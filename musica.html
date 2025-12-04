@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibe Player - Fluid Mode</title>
+    <style>
+        :root {
+            --spotify-black: #121212;
+            --spotify-gray: #181818;
+            --spotify-green: #1DB954;
+            --spotify-white: #FFFFFF;
+            --spotify-text: #B3B3B3;
+        }
+
+        body {
+            margin: 0;
+            background-color: black;
+            font-family: 'Circular', sans-serif; /* Fallback a sans-serif */
+            color: var(--spotify-white);
+            height: 100vh;
+            overflow: hidden;
+            display: grid;
+            grid-template-rows: 1fr 90px; /* Escenario | Barra Player */
+        }
+
+        /* --- CONTENEDOR PRINCIPAL (Split Screen) --- */
+        .main-wrapper {
+            display: grid;
+            grid-template-columns: 250px 1fr; /* Playlist | Visualizador */
+            height: 100%;
+            overflow: hidden;
+        }
+
+        /* --- SIDEBAR PLAYLIST --- */
+        .playlist-sidebar {
+            background-color: black;
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 1px solid #282828;
+        }
+
+        .playlist-title {
+            color: var(--spotify-text);
+            font-size: 12px;
+            letter-spacing: 1px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+        }
+
+        .track-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .track-item {
+            padding: 10px;
+            color: var(--spotify-text);
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: background 0.2s;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .track-item:hover {
+            background-color: #282828;
+            color: white;
+        }
+
+        .track-item.active {
+            color: var(--spotify-green);
+            background-color: #282828;
+            font-weight: bold;
+        }
+
+        /* --- VISUALIZADOR (Fondo y Personaje) --- */
+        .visualizer-area {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            /* Fondo base que será sobreescrito por JS dinámicamente */
+            background: radial-gradient(circle, #222 0%, #000 100%);
+            transition: background 0.2s ease;
+        }
+
+        .blob {
+            width: 250px;
+            height: 250px;
+            background: var(--spotify-green);
+            /* Importante: Transición suave para evitar saltos bruscos */
+            transition: border-radius 0.2s ease, transform 0.1s linear, filter 0.2s;
+            box-shadow: 0 0 80px rgba(29, 185, 84, 0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Ojos más expresivos */
+        .eyes {
+            display: flex;
+            gap: 50px;
+            pointer-events: none; /* Los ojos no interfieren */
+        }
+
+        .eye {
+            width: 25px;
+            height: 35px;
+            background-color: black;
+            border-radius: 50%;
+            position: relative;
+        }
+        
+        /* Brillo en los ojos */
+        .eye::after {
+            content: '';
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            width: 8px;
+            height: 8px;
+            background: white;
+            border-radius: 50%;
+        }
+
+        /* --- BARRA DE REPRODUCCIÓN --- */
+        .player-bar {
+            background-color: var(--spotify-gray);
+            border-top: 1px solid #282828;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            z-index: 20;
+        }
+
+        .controls-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            min-width: 200px;
+        }
+
+        .add-btn {
+            background-color: var(--spotify-white);
+            color: black;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 500px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 13px;
+            transition: transform 0.2s;
+        }
+        
+        .add-btn:hover { transform: scale(1.05); }
+
+        .current-song-info {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .song-title { color: white; font-size: 14px; font-weight: 500; }
+        .artist-name { color: var(--spotify-text); font-size: 11px; }
+
+        audio {
+            width: 400px;
+            outline: none;
+            filter: invert(0.9) hue-rotate(180deg); /* Truco para hacer el player oscuro */
+        }
+
+        input[type="file"] { display: none; }
+
+    </style>
+</head>
+<body>
+
+    <div class="main-wrapper">
+        <div class="playlist-sidebar">
+            <div class="playlist-title">Tu Colección Local</div>
+            <ul class="track-list" id="playlist-container">
+                <li class="track-item" style="cursor: default; opacity: 0.5;">Añade canciones abajo...</li>
+            </ul>
+        </div>
+
+        <div class="visualizer-area" id="bg-canvas">
+            <div class="blob" id="dancer">
+                <div class="eyes">
+                    <div class="eye"></div>
+                    <div class="eye"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="player-bar">
+        <div class="controls-left">
+            <label for="file-upload" class="add-btn">Añadir Música</label>
+            <input type="file" id="file-upload" accept="audio/*" multiple>
+            
+            <div class="current-song-info">
+                <span class="song-title" id="now-playing">Esperando música...</span>
+                <span class="artist-name">Reproductor Local</span>
+            </div>
+        </div>
+        
+        <audio id="audio-player" controls></audio>
+        <div style="width: 200px;"></div> </div>
+
+    <script>
+        // Elementos DOM
+        const fileInput = document.getElementById('file-upload');
+        const audioPlayer = document.getElementById('audio-player');
+        const playlistContainer = document.getElementById('playlist-container');
+        const nowPlayingText = document.getElementById('now-playing');
+        const dancer = document.getElementById('dancer');
+        const bgCanvas = document.getElementById('bg-canvas');
+
+        // Variables de Estado
+        let playlist = [];
+        let currentTrackIndex = 0;
+        let audioContext, analyser, source, dataArray;
+        let isAudioInit = false;
+        let rotation = 0; // Para rotar el blob continuamente
+
+        // 1. Manejo de Archivos y Playlist
+        fileInput.addEventListener('change', function(e) {
+            const files = Array.from(e.target.files);
+            
+            if (files.length > 0) {
+                // Si es la primera vez que añadimos, limpiamos el mensaje por defecto
+                if (playlist.length === 0) playlistContainer.innerHTML = '';
+                
+                files.forEach(file => {
+                    const songObj = {
+                        name: file.name.replace(/\.[^/.]+$/, ""), // Quitar extensión
+                        url: URL.createObjectURL(file)
+                    };
+                    playlist.push(songObj);
+                    renderPlaylistItem(songObj, playlist.length - 1);
+                });
+
+                // Si no hay nada sonando, reproducir la primera de las nuevas
+                if (audioPlayer.paused && audioPlayer.currentTime === 0 && !isAudioInit) {
+                    playTrack(0);
+                }
+            }
+        });
+
+        function renderPlaylistItem(song, index) {
+            const li = document.createElement('li');
+            li.className = 'track-item';
+            li.textContent = `${index + 1}. ${song.name}`;
+            li.onclick = () => playTrack(index);
+            playlistContainer.appendChild(li);
+        }
+
+        function playTrack(index) {
+            if (index < 0 || index >= playlist.length) return;
+
+            currentTrackIndex = index;
+            const track = playlist[index];
+            
+            // Actualizar audio source
+            audioPlayer.src = track.url;
+            nowPlayingText.textContent = track.name;
+            
+            // Actualizar UI de la lista
+            const items = document.querySelectorAll('.track-item');
+            items.forEach(i => i.classList.remove('active'));
+            if(items[index]) items[index].classList.add('active');
+
+            // Reproducir e iniciar visualizador
+            audioPlayer.play().then(() => {
+                if (!isAudioInit) initAudioContext();
+            }).catch(err => console.log("Interacción requerida primero"));
+        }
+
+        // Auto-play siguiente canción
+        audioPlayer.addEventListener('ended', () => {
+            if (currentTrackIndex < playlist.length - 1) {
+                playTrack(currentTrackIndex + 1);
+            }
+        });
+
+        // 2. Audio Context y Análisis
+        function initAudioContext() {
+            if (isAudioInit) return;
+            
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            
+            source = audioContext.createMediaElementSource(audioPlayer);
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+            
+            analyser.fftSize = 512; 
+            const bufferLength = analyser.frequencyBinCount;
+            dataArray = new Uint8Array(bufferLength);
+
+            isAudioInit = true;
+            renderVisuals();
+        }
+
+        // 3. Renderizado Visual (Física de fluidos)
+        function renderVisuals() {
+            requestAnimationFrame(renderVisuals);
+            analyser.getByteFrequencyData(dataArray);
+
+            // Calcular Bajos (Bass) - Ritmo fuerte
+            let bass = 0; 
+            for (let i = 0; i < 10; i++) bass += dataArray[i];
+            bass = bass / 10; // Promedio 0-255
+
+            // Calcular Medios - Para variabilidad
+            let mids = 0;
+            for (let i = 20; i < 50; i++) mids += dataArray[i];
+            mids = mids / 30;
+
+            // --- Lógica del Personaje (Blob) ---
+            
+            // 1. Escala: Se hace grande con los bajos, pero más suave
+            const scale = 1 + (bass / 400); 
+            
+            // 2. Deformación Líquida:
+            // Usamos Seno y Coseno con el tiempo y los 'mids' para mover las esquinas individualmente
+            const time = Date.now() / 1000;
+            const r1 = 50 + (bass/10) + Math.sin(time) * 10; // Top-left
+            const r2 = 50 - (mids/10) + Math.cos(time) * 10; // Top-right
+            const r3 = 50 + (mids/10) + Math.sin(time + 2) * 10; // Bottom-right
+            const r4 = 50 - (bass/10) + Math.cos(time + 2) * 10; // Bottom-left
+            
+            // Rotación lenta continua + pequeño salto con bajos
+            rotation += 0.5 + (bass / 100); 
+
+            dancer.style.transform = `scale(${scale}) rotate(${rotation}deg)`;
+            
+            // Aquí está la magia de la fluidez: border-radius asimétrico
+            // formato: top-l top-r bot-r bot-l / top-l top-r bot-r bot-l
+            dancer.style.borderRadius = `${r1}% ${r2}% ${r3}% ${r4}% / ${r4}% ${r3}% ${r2}% ${r1}%`;
+
+            // Color del blob reacciona intensidad
+            if(bass > 210) {
+                dancer.style.filter = "brightness(1.4) hue-rotate(-20deg)";
+            } else {
+                dancer.style.filter = "brightness(1) hue-rotate(0deg)";
+            }
+
+            // --- Lógica del Fondo Dinámico ---
+            // Cambia el color del fondo basado en los bajos
+            // Mapeamos el volumen a opacidad y un poco de cambio de color
+            const intensity = bass / 255;
+            const hue = 140 - (intensity * 40); // De verde spotify (140) a un verde más amarillento
+            
+            // Fondo radial que pulsa
+            bgCanvas.style.background = `radial-gradient(circle at center, hsla(${hue}, 80%, ${10 + (intensity * 20)}%, 1) 0%, #000000 80%)`;
+        }
+
+    </script>
+</body>
+</html>
